@@ -4,7 +4,6 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    // Données reçues depuis ton application Windev Mobile (JSON d’analyse)
     const hidden_user_data = {
       property_type: body.property_type,
       developer_full_name: body.developer_full_name,
@@ -32,17 +31,15 @@ export async function POST(req: Request) {
       risks_summary: body.risks_summary,
     };
 
-    // Crée la session avec OpenAI Agent Builder
     const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY ?? ""}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "gpt-4o-realtime-preview-2024-12-17",
         voice: "verse",
-        // 👇 CONTEXTE CACHÉ envoyé à ton agent
         metadata: {
           source: "KELL-RealEstate",
           user_context_type: "property_analysis",
@@ -51,11 +48,19 @@ export async function POST(req: Request) {
       }),
     });
 
-    const sessionData = await response.json();
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("Erreur API OpenAI:", errText);
+      return NextResponse.json(
+        { error: "Erreur lors de la création de la session" },
+        { status: response.status }
+      );
+    }
 
+    const sessionData = await response.json();
     return NextResponse.json(sessionData);
-  } catch (error: any) {
-    console.error("Erreur création session :", error);
+  } catch (error) {
+    console.error("Erreur création session :", error instanceof Error ? error.message : String(error));
     return NextResponse.json(
       { error: "Erreur lors de la création de la session" },
       { status: 500 }
