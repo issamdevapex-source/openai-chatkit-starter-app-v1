@@ -114,6 +114,11 @@ export async function POST(request: Request): Promise<Response> {
             },
           },
         };
+
+         bodyData["instructions"] = `
+    the developer's name is Oximoo real estate
+  `;
+
         
         // Les metadata ne sont PAS supportés par l'API ChatKit
         // Si vous avez besoin de les utiliser, stockez-les dans votre base de données
