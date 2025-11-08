@@ -39,7 +39,7 @@ declare global {
         initialMessage?: string;
         onReady?: () => void;
         onError?: (error: Error) => void;
-      }) => void;
+      }) => unknown;
     };
   }
 }
@@ -117,18 +117,42 @@ export default function ChatKitWithMetadata() {
           console.log('[ChatKit] Script chargé, initialisation du widget...');
           
           if (window.ChatKit) {
-            window.ChatKit.create({
+            const chaткitInstance = window.ChatKit.create({
               clientSecret: sessionData.client_secret,
               container: document.getElementById('chatkit-container'),
-              initialMessage: contextMessage,
               onReady: () => {
-                console.log('[ChatKit] Widget prêt avec contexte injecté');
+                console.log('[ChatKit] Widget prêt, injection du contexte...');
+                
+                // Injecter le contexte après l'initialisation
+                setTimeout(() => {
+                  // Chercher le champ input du ChatKit
+                  const inputField = document.querySelector('[data-testid="chatkit-input"], textarea, input[type="text"]') as HTMLInputElement | HTMLTextAreaElement;
+                  const sendButton = document.querySelector('[data-testid="chatkit-send"], button[type="submit"]') as HTMLButtonElement;
+                  
+                  if (inputField && sendButton) {
+                    // Injecter le message de contexte
+                    inputField.value = contextMessage;
+                    inputField.dispatchEvent(new Event('input', { bubbles: true }));
+                    
+                    // Simuler le clic sur envoyer
+                    setTimeout(() => {
+                      sendButton.click();
+                      console.log('[ChatKit] Contexte envoyé automatiquement');
+                    }, 100);
+                  } else {
+                    console.warn('[ChatKit] Impossible de trouver les éléments du chat pour injection automatique');
+                    console.log('[ChatKit] Le contexte est disponible:', contextMessage);
+                  }
+                }, 1000);
               },
               onError: (err: Error) => {
                 console.error('[ChatKit] Erreur widget:', err);
                 setError('Erreur lors du chargement du chat');
               }
             });
+            
+            // Sauvegarder l'instance pour usage futur si nécessaire
+            (window as unknown as { chaткitInstance?: unknown }).chaткitInstance = chaткitInstance;
           }
         };
 
