@@ -18,6 +18,11 @@ const DEFAULT_CHATKIT_BASE = "https://api.openai.com";
 const SESSION_COOKIE_NAME = "chatkit_session_id";
 const SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
+// Helper pour vérifier si les logs de debug sont activés
+const isDebugEnabled = () => {
+  return process.env.ENABLE_DEBUG_LOGS === "true" || process.env.NODE_ENV !== "production";
+};
+
 export async function POST(request: Request): Promise<Response> {
   if (request.method !== "POST") {
     return methodNotAllowedResponse();
@@ -37,8 +42,8 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    // Log request headers for debugging (dev only)
-    if (process.env.NODE_ENV !== "production") {
+    // Log request headers for debugging
+    if (isDebugEnabled()) {
       console.info("[create-session] request headers:", Object.fromEntries(request.headers.entries()));
     }
 
@@ -50,7 +55,7 @@ export async function POST(request: Request): Promise<Response> {
     if (process.env.CHATKIT_METADATA) {
       try {
         envMetadata = JSON.parse(process.env.CHATKIT_METADATA as string) as Record<string, unknown>;
-        if (process.env.NODE_ENV !== "production") {
+        if (isDebugEnabled()) {
           console.info("[create-session] env metadata:", envMetadata);
         }
       } catch (err) {
@@ -61,7 +66,7 @@ export async function POST(request: Request): Promise<Response> {
     // Final metadata: prefer client-supplied metadata; fall back to env metadata
     const finalMetadata = parsedBody?.metadata ?? envMetadata ?? undefined;
 
-    if (process.env.NODE_ENV !== "production") {
+    if (isDebugEnabled()) {
       console.info("[create-session] parsed body:", parsedBody);
       console.info("[create-session] final metadata:", finalMetadata);
     }
@@ -72,7 +77,7 @@ export async function POST(request: Request): Promise<Response> {
     const resolvedWorkflowId =
       parsedBody?.workflow?.id ?? parsedBody?.workflowId ?? WORKFLOW_ID;
 
-    if (process.env.NODE_ENV !== "production") {
+    if (isDebugEnabled()) {
       console.info("[create-session] handling request", {
         resolvedWorkflowId,
         body: JSON.stringify(parsedBody),
@@ -111,14 +116,14 @@ export async function POST(request: Request): Promise<Response> {
             },
           },
         };
-        if (process.env.NODE_ENV !== "production") {
+        if (isDebugEnabled()) {
           console.info("[create-session] request payload:", bodyData);
         }
         return JSON.stringify(bodyData);
       })(),
     });
 
-    if (process.env.NODE_ENV !== "production") {
+    if (isDebugEnabled()) {
       console.info("[create-session] upstream response", {
         status: upstreamResponse.status,
         statusText: upstreamResponse.statusText,
@@ -269,12 +274,12 @@ function buildJsonResponse(
 async function safeParseJson<T>(req: Request): Promise<T | null> {
   try {
     // Log content-type (utile pour diagnostiquer)
-    if (process.env.NODE_ENV !== "production") {
+    if (isDebugEnabled()) {
       console.info("[create-session] content-type:", req.headers.get("content-type"));
     }
 
     const text = await req.text();
-    if (process.env.NODE_ENV !== "production") {
+    if (isDebugEnabled()) {
       console.info("[create-session] raw request body:", text);
     }
 
@@ -288,7 +293,7 @@ async function safeParseJson<T>(req: Request): Promise<T | null> {
     } catch (parseError) {
       // Log details pour aider au debugging du JSON mal formé
       console.error("[create-session] JSON parse error:", parseError instanceof Error ? parseError.message : parseError);
-      if (process.env.NODE_ENV !== "production") {
+      if (isDebugEnabled()) {
         // quick checks
         console.info("[create-session] quick string checks:", {
           containsMetadataKey: text.includes('"metadata"'),
