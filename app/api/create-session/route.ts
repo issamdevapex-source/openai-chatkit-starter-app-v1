@@ -71,6 +71,8 @@ export async function POST(request: Request): Promise<Response> {
       body: JSON.stringify({
         workflow: { id: resolvedWorkflowId },
         user: userId,
+         // Forward optional metadata (hidden data) if provided by a trusted server
+        metadata: parsedBody?.metadata ?? undefined,
         chatkit_configuration: {
           file_upload: {
             enabled:
