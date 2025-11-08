@@ -30,6 +30,20 @@ interface PropertyMetadata {
   risks_summary?: string;
 }
 
+declare global {
+  interface Window {
+    ChatKit?: {
+      create: (config: {
+        clientSecret: string;
+        container: HTMLElement | null;
+        initialMessage?: string;
+        onReady?: () => void;
+        onError?: (error: Error) => void;
+      }) => void;
+    };
+  }
+}
+
 export default function ChatKitWithMetadata() {
   const searchParams = useSearchParams();
   const [metadata, setMetadata] = useState<PropertyMetadata | null>(null);
@@ -102,13 +116,11 @@ export default function ChatKitWithMetadata() {
         chatKitScript.onload = () => {
           console.log('[ChatKit] Script chargé, initialisation du widget...');
           
-          // @ts-ignore - ChatKit est chargé globalement
           if (window.ChatKit) {
-            // @ts-ignore
-            const chatkit = window.ChatKit.create({
+            window.ChatKit.create({
               clientSecret: sessionData.client_secret,
               container: document.getElementById('chatkit-container'),
-              initialMessage: contextMessage, // Injecter le contexte ici
+              initialMessage: contextMessage,
               onReady: () => {
                 console.log('[ChatKit] Widget prêt avec contexte injecté');
               },
@@ -134,7 +146,7 @@ export default function ChatKitWithMetadata() {
 
       } catch (error) {
         console.error('[ChatKit] Erreur initialisation:', error);
-        setError('Erreur lors de l\'initialisation du chat');
+        setError("Erreur lors de l'initialisation du chat");
       }
     };
 
@@ -155,7 +167,7 @@ export default function ChatKitWithMetadata() {
         <div style={{ fontSize: '24px', color: '#d32f2f' }}>⚠️</div>
         <div style={{ fontSize: '18px', color: '#666' }}>{error}</div>
         <div style={{ fontSize: '14px', color: '#999' }}>
-          Vérifiez que les metadata sont correctement encodées dans l'URL
+          Vérifiez que les metadata sont correctement encodées dans l&apos;URL
         </div>
       </div>
     );
