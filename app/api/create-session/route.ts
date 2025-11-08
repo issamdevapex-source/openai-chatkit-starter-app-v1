@@ -6,6 +6,7 @@ interface CreateSessionRequestBody {
   workflow?: { id?: string | null } | null;
   scope?: { user_id?: string | null } | null;
   workflowId?: string | null;
+   metadata?: Record<string, unknown> | null;
   chatkit_configuration?: {
     file_upload?: {
       enabled?: boolean;
