@@ -38,6 +38,9 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const parsedBody = await safeParseJson<CreateSessionRequestBody>(request);
+    if (process.env.NODE_ENV !== "production") {
+  console.info("[create-session] received metadata:", parsedBody?.metadata);
+}
     const { userId, sessionCookie: resolvedSessionCookie } =
       await resolveUserId(request);
     sessionCookie = resolvedSessionCookie;
