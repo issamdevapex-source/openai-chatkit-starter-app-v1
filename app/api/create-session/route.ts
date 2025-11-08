@@ -107,8 +107,6 @@ export async function POST(request: Request): Promise<Response> {
         const bodyData = {
           workflow: { id: resolvedWorkflowId },
           user: userId,
-          // Forward the merged metadata (client wins over env)
-          metadata: finalMetadata,
           chatkit_configuration: {
             file_upload: {
               enabled:
@@ -116,6 +114,15 @@ export async function POST(request: Request): Promise<Response> {
             },
           },
         };
+        
+        // Les metadata ne sont PAS supportés par l'API ChatKit
+        // Si vous avez besoin de les utiliser, stockez-les dans votre base de données
+        // ou passez-les dans le premier message du workflow
+        if (finalMetadata) {
+          console.warn("[create-session] metadata received but not sent to OpenAI (not supported):", finalMetadata);
+          // TODO: Stocker dans une base de données si nécessaire
+          // await db.saveUserMetadata(userId, finalMetadata);
+        }
         if (isDebugEnabled()) {
           console.info("[create-session] request payload:", bodyData);
         }
