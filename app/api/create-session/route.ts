@@ -6,7 +6,7 @@ interface CreateSessionRequestBody {
   workflow?: { id?: string | null } | null;
   scope?: { user_id?: string | null } | null;
   workflowId?: string | null;
-   metadata?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null;
   chatkit_configuration?: {
     file_upload?: {
       enabled?: boolean;
@@ -37,23 +37,25 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const parsedBody = await safeParseJson<CreateSessionRequestBody>(request);
-   // Log 1: Juste après le parsing
-console.log("DEBUG - Received request body:", JSON.stringify(parsedBody, null, 2));
-console.log("DEBUG - Metadata content:", JSON.stringify(parsedBody?.metadata, null, 2));
+    // Log request headers
+    console.log("DEBUG - Request headers:", Object.fromEntries(request.headers.entries()));
+
+    // Get raw request body
+    const rawBody = await request.text();
+    console.log("DEBUG - Raw request body:", rawBody);
+
+    // Parse the body
+    const parsedBody = rawBody ? JSON.parse(rawBody) as CreateSessionRequestBody : null;
+    
+    // Log parsed data
+    console.log("DEBUG - Parsed request body:", JSON.stringify(parsedBody, null, 2));
+    console.log("DEBUG - Metadata content:", parsedBody?.metadata ? JSON.stringify(parsedBody.metadata, null, 2) : "undefined");
     
     const { userId, sessionCookie: resolvedSessionCookie } =
       await resolveUserId(request);
     sessionCookie = resolvedSessionCookie;
     const resolvedWorkflowId =
       parsedBody?.workflow?.id ?? parsedBody?.workflowId ?? WORKFLOW_ID;
-
-    if (process.env.NODE_ENV !== "production") {
-      console.info("[create-session] handling request", {
-        resolvedWorkflowId,
-        body: JSON.stringify(parsedBody),
-      });
-    }
 
     if (!resolvedWorkflowId) {
       return buildJsonResponse(
@@ -66,11 +68,23 @@ console.log("DEBUG - Metadata content:", JSON.stringify(parsedBody?.metadata, nu
 
     const apiBase = process.env.CHATKIT_API_BASE ?? DEFAULT_CHATKIT_BASE;
     const url = `${apiBase}/v1/chatkit/sessions`;
-    // Log 2: Avant l'envoi à ChatKit
-    console.log("DEBUG - Sending to ChatKit with metadata:", JSON.stringify({
-      workflowId: resolvedWorkflowId,
-      metadata: parsedBody?.metadata
-    }, null, 2));
+
+    // Prepare request body
+    const requestBody = {
+      workflow: { id: resolvedWorkflowId },
+      user: userId,
+      metadata: parsedBody?.metadata ?? undefined,
+      chatkit_configuration: {
+        file_upload: {
+          enabled:
+            parsedBody?.chatkit_configuration?.file_upload?.enabled ?? false,
+        },
+      },
+    };
+
+    // Log what we're sending to ChatKit
+    console.log("DEBUG - Sending to ChatKit:", JSON.stringify(requestBody, null, 2));
+
     const upstreamResponse = await fetch(url, {
       method: "POST",
       headers: {
@@ -78,32 +92,19 @@ console.log("DEBUG - Metadata content:", JSON.stringify(parsedBody?.metadata, nu
         Authorization: `Bearer ${openaiApiKey}`,
         "OpenAI-Beta": "chatkit_beta=v1",
       },
-      body: JSON.stringify({
-        workflow: { id: resolvedWorkflowId },
-        user: userId,
-         // Forward optional metadata (hidden data) if provided by a trusted server
-        metadata: parsedBody?.metadata ?? undefined,
-        chatkit_configuration: {
-          file_upload: {
-            enabled:
-              parsedBody?.chatkit_configuration?.file_upload?.enabled ?? false,
-          },
-        },
-      }),
+      body: JSON.stringify(requestBody),
     });
 
-    if (process.env.NODE_ENV !== "production") {
-      console.info("[create-session] upstream response", {
-        status: upstreamResponse.status,
-        statusText: upstreamResponse.statusText,
-      });
-    }
+    // Log response status
+    console.log("DEBUG - ChatKit response status:", upstreamResponse.status, upstreamResponse.statusText);
 
-    const upstreamJson = (await upstreamResponse.json().catch(() => ({}))) as
+    const upstreamJson = await upstreamResponse.json().catch(() => ({})) as
       | Record<string, unknown>
       | undefined;
- // Log 3: Après la réponse de ChatKit
-    console.log("DEBUG - ChatKit response:", JSON.stringify(upstreamJson, null, 2));
+
+    // Log complete response
+    console.log("DEBUG - ChatKit complete response:", JSON.stringify(upstreamJson, null, 2));
+
     if (!upstreamResponse.ok) {
       const upstreamError = extractUpstreamError(upstreamJson);
       console.error("OpenAI ChatKit session creation failed", {
@@ -130,6 +131,9 @@ console.log("DEBUG - Metadata content:", JSON.stringify(parsedBody?.metadata, nu
       client_secret: clientSecret,
       expires_after: expiresAfter,
     };
+
+    // Log final response
+    console.log("DEBUG - Sending response to client:", JSON.stringify(responsePayload, null, 2));
 
     return buildJsonResponse(
       responsePayload,
