@@ -38,9 +38,10 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const parsedBody = await safeParseJson<CreateSessionRequestBody>(request);
-    if (process.env.NODE_ENV !== "production") {
-  console.info("[create-session] received metadata:", parsedBody?.metadata);
-}
+   // Log 1: Juste après le parsing
+console.log("DEBUG - Received request body:", JSON.stringify(parsedBody, null, 2));
+console.log("DEBUG - Metadata content:", JSON.stringify(parsedBody?.metadata, null, 2));
+    
     const { userId, sessionCookie: resolvedSessionCookie } =
       await resolveUserId(request);
     sessionCookie = resolvedSessionCookie;
@@ -65,6 +66,11 @@ export async function POST(request: Request): Promise<Response> {
 
     const apiBase = process.env.CHATKIT_API_BASE ?? DEFAULT_CHATKIT_BASE;
     const url = `${apiBase}/v1/chatkit/sessions`;
+    // Log 2: Avant l'envoi à ChatKit
+    console.log("DEBUG - Sending to ChatKit with metadata:", JSON.stringify({
+      workflowId: resolvedWorkflowId,
+      metadata: parsedBody?.metadata
+    }, null, 2));
     const upstreamResponse = await fetch(url, {
       method: "POST",
       headers: {
@@ -96,7 +102,8 @@ export async function POST(request: Request): Promise<Response> {
     const upstreamJson = (await upstreamResponse.json().catch(() => ({}))) as
       | Record<string, unknown>
       | undefined;
-
+ // Log 3: Après la réponse de ChatKit
+    console.log("DEBUG - ChatKit response:", JSON.stringify(upstreamJson, null, 2));
     if (!upstreamResponse.ok) {
       const upstreamError = extractUpstreamError(upstreamJson);
       console.error("OpenAI ChatKit session creation failed", {
