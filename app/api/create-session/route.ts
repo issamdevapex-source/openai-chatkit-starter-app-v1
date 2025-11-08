@@ -37,25 +37,47 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    // Log request headers
-    console.log("DEBUG - Request headers:", Object.fromEntries(request.headers.entries()));
+    // Log request headers for debugging (dev only)
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[create-session] request headers:", Object.fromEntries(request.headers.entries()));
+    }
 
-    // Get raw request body
-    const rawBody = await request.text();
-    console.log("DEBUG - Raw request body:", rawBody);
+    // Parse body safely and log raw content if useful
+    const parsedBody = await safeParseJson<CreateSessionRequestBody>(request);
 
-    // Parse the body
-    const parsedBody = rawBody ? (JSON.parse(rawBody) as CreateSessionRequestBody) : null;
-    
-    // Log parsed data
-    console.log("DEBUG - Parsed request body:", JSON.stringify(parsedBody, null, 2));
-    console.log("DEBUG - Metadata content:", parsedBody?.metadata ? JSON.stringify(parsedBody.metadata, null, 2) : "undefined");
-    
+    // Read optional metadata from environment (CHATKIT_METADATA must be a JSON string)
+    let envMetadata: Record<string, unknown> | undefined = undefined;
+    if (process.env.CHATKIT_METADATA) {
+      try {
+        envMetadata = JSON.parse(process.env.CHATKIT_METADATA as string) as Record<string, unknown>;
+        if (process.env.NODE_ENV !== "production") {
+          console.info("[create-session] env metadata:", envMetadata);
+        }
+      } catch (err) {
+        console.error("[create-session] failed to parse CHATKIT_METADATA env var:", err);
+      }
+    }
+
+    // Final metadata: prefer client-supplied metadata; fall back to env metadata
+    const finalMetadata = parsedBody?.metadata ?? envMetadata ?? undefined;
+
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[create-session] parsed body:", parsedBody);
+      console.info("[create-session] final metadata:", finalMetadata);
+    }
+
     const { userId, sessionCookie: resolvedSessionCookie } =
       await resolveUserId(request);
     sessionCookie = resolvedSessionCookie;
     const resolvedWorkflowId =
       parsedBody?.workflow?.id ?? parsedBody?.workflowId ?? WORKFLOW_ID;
+
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[create-session] handling request", {
+        resolvedWorkflowId,
+        body: JSON.stringify(parsedBody),
+      });
+    }
 
     if (!resolvedWorkflowId) {
       return buildJsonResponse(
@@ -69,22 +91,6 @@ export async function POST(request: Request): Promise<Response> {
     const apiBase = process.env.CHATKIT_API_BASE ?? DEFAULT_CHATKIT_BASE;
     const url = `${apiBase}/v1/chatkit/sessions`;
 
-    // Prepare request body
-    const requestBody = {
-      workflow: { id: resolvedWorkflowId },
-      user: userId,
-      metadata: parsedBody?.metadata ?? undefined,
-      chatkit_configuration: {
-        file_upload: {
-          enabled:
-            parsedBody?.chatkit_configuration?.file_upload?.enabled ?? false,
-        },
-      },
-    };
-
-    // Log what we're sending to ChatKit
-    console.log("DEBUG - Sending to ChatKit:", JSON.stringify(requestBody, null, 2));
-
     const upstreamResponse = await fetch(url, {
       method: "POST",
       headers: {
@@ -92,18 +98,36 @@ export async function POST(request: Request): Promise<Response> {
         Authorization: `Bearer ${openaiApiKey}`,
         "OpenAI-Beta": "chatkit_beta=v1",
       },
-      body: JSON.stringify(requestBody),
+      body: (() => {
+        const bodyData = {
+          workflow: { id: resolvedWorkflowId },
+          user: userId,
+          // Forward the merged metadata (client wins over env)
+          metadata: finalMetadata,
+          chatkit_configuration: {
+            file_upload: {
+              enabled:
+                parsedBody?.chatkit_configuration?.file_upload?.enabled ?? false,
+            },
+          },
+        };
+        if (process.env.NODE_ENV !== "production") {
+          console.info("[create-session] request payload:", bodyData);
+        }
+        return JSON.stringify(bodyData);
+      })(),
     });
 
-    // Log response status
-    console.log("DEBUG - ChatKit response status:", upstreamResponse.status, upstreamResponse.statusText);
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[create-session] upstream response", {
+        status: upstreamResponse.status,
+        statusText: upstreamResponse.statusText,
+      });
+    }
 
-    const upstreamJson = await upstreamResponse.json().catch(() => ({})) as
+    const upstreamJson = (await upstreamResponse.json().catch(() => ({}))) as
       | Record<string, unknown>
       | undefined;
-
-    // Log complete response
-    console.log("DEBUG - ChatKit complete response:", JSON.stringify(upstreamJson, null, 2));
 
     if (!upstreamResponse.ok) {
       const upstreamError = extractUpstreamError(upstreamJson);
@@ -131,9 +155,6 @@ export async function POST(request: Request): Promise<Response> {
       client_secret: clientSecret,
       expires_after: expiresAfter,
     };
-
-    // Log final response
-    console.log("DEBUG - Sending response to client:", JSON.stringify(responsePayload, null, 2));
 
     return buildJsonResponse(
       responsePayload,
@@ -240,14 +261,45 @@ function buildJsonResponse(
   });
 }
 
+/**
+ * safeParseJson
+ * - lit le body et tente de parser en JSON
+ * - logge des erreurs détaillées en cas de JSON invalide (utile pour diagnostiquer WinDev)
+ */
 async function safeParseJson<T>(req: Request): Promise<T | null> {
   try {
+    // Log content-type (utile pour diagnostiquer)
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[create-session] content-type:", req.headers.get("content-type"));
+    }
+
     const text = await req.text();
+    if (process.env.NODE_ENV !== "production") {
+      console.info("[create-session] raw request body:", text);
+    }
+
     if (!text) {
       return null;
     }
-    return JSON.parse(text) as T;
-  } catch {
+
+    try {
+      const parsed = JSON.parse(text) as T;
+      return parsed;
+    } catch (parseError) {
+      // Log details pour aider au debugging du JSON mal formé
+      console.error("[create-session] JSON parse error:", parseError instanceof Error ? parseError.message : parseError);
+      if (process.env.NODE_ENV !== "production") {
+        // quick checks
+        console.info("[create-session] quick string checks:", {
+          containsMetadataKey: text.includes('"metadata"'),
+          containsPythonTrue: text.includes("True") || text.includes("False"),
+          lastChar: text.charAt(text.length - 1),
+        });
+      }
+      return null;
+    }
+  } catch (err) {
+    console.error("[create-session] safeParseJson read error:", err);
     return null;
   }
 }
