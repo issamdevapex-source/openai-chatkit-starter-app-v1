@@ -45,7 +45,7 @@ export async function POST(request: Request): Promise<Response> {
     console.log("DEBUG - Raw request body:", rawBody);
 
     // Parse the body
-    const parsedBody = rawBody ? JSON.parse(rawBody) as CreateSessionRequestBody : null;
+    const parsedBody = rawBody ? (JSON.parse(rawBody) as CreateSessionRequestBody) : null;
     
     // Log parsed data
     console.log("DEBUG - Parsed request body:", JSON.stringify(parsedBody, null, 2));
